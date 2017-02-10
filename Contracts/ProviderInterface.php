@@ -20,10 +20,17 @@ interface ProviderInterface
     public function __construct(array $options = []);
 
     /**
+     * returns the settings group.
+     *
+     * @return string
+     */
+    public function getSettingsGroup(): string;
+
+    /**
      * factory method.
      *
      * @param array $options
      * @return mixed
      */
-    public static function create(array $options = []);
+    public static function withOptions(array $options = []);
 }

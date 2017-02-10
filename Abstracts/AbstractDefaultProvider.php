@@ -18,5 +18,14 @@ abstract class AbstractDefaultProvider implements ProviderInterface, ServiceProv
 {
     use ProviderTrait;
 
-
+    /**
+     * factory method.
+     *
+     * @param array $options
+     * @return mixed
+     */
+    public static function withOptions(array $options = [])
+    {
+        return new static($options);
+    }
 }

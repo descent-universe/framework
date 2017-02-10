@@ -13,7 +13,7 @@ namespace Descent\Abstracts;
 
 trait ProviderTrait
 {
-    private $options = [];
+    use OptionsTrait;
 
     /**
      * ProviderTrait constructor.
@@ -22,34 +22,5 @@ trait ProviderTrait
     public function __construct(array $options = [])
     {
         $this->options = $options;
-    }
-
-    /**
-     * options getter.
-     *
-     * @return array
-     */
-    protected function getOptions(): array
-    {
-        return $this->options;
-    }
-
-    /**
-     * options query command.
-     *
-     * @param string $query
-     * @return mixed|null returns null when the queried option is not given.
-     */
-    protected function options(string $query)
-    {
-        $evaluate = '["'.str_replace('.', '"]["', $query).'"]';
-
-        $available = eval('return isset($this->options'.$evaluate.');');
-
-        if ( ! $available ) {
-            return null;
-        }
-
-        return eval('return $this->options'.$evaluate.';');
     }
 }

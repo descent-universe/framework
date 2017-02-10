@@ -28,14 +28,13 @@ use Symfony\Component\HttpKernel\HttpKernelInterface;
 class KernelProvider extends AbstractDefaultProvider implements EventProviderInterface
 {
     /**
-     * factory method.
+     * returns the settings group.
      *
-     * @param array $options
-     * @return mixed
+     * @return string
      */
-    public static function create(array $options = [])
+    public function getSettingsGroup(): string
     {
-        return new static($options);
+        return 'framework';
     }
 
     /**
