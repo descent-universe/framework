@@ -16,23 +16,68 @@ use Descent\Routing\Exceptions\NoBoundControllerException;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\Routing\RouteCollection;
 
+/**
+ * Class ControllerCollection
+ *
+ * @package Descent\Routing
+ *
+ * @method ControllerCollection assert(string $variable, string $regexp)
+ * @method ControllerCollection value(string $variable, mixed $default)
+ * @method ControllerCollection convert(string $variable, callable $callback)
+ * @method ControllerCollection method(string $method)
+ * @method ControllerCollection requireHttp()
+ * @method ControllerCollection requireHttps()
+ * @method ControllerCollection before(callable $callback)
+ * @method ControllerCollection after(callable $callback)
+ * @method ControllerCollection when(string $condition)
+ */
 class ControllerCollection
 {
     /**
      * @var RouteEntity[]
      */
     protected $controllers = [];
-    protected $defaultRoute;
-    protected $defaultController;
-    protected $prefix;
-    protected $routesFactory;
-    protected $controllersFactory;
 
-    public function __construct(Route $defaultRoute, RouteCollection $routesFactory = null, callable $controllersFactory = null)
-    {
+    /**
+     * @var Route
+     */
+    protected $defaultRoute;
+
+    /**
+     * @var \Closure
+     */
+    protected $defaultController;
+
+    /**
+     * @var
+     */
+    protected $prefix;
+
+    /**
+     * @var RouteCollection
+     */
+    protected $routesFactory;
+
+    /**
+     * @var RoutingFactoriesAdapter
+     */
+    protected $routingFactories;
+
+    /**
+     * ControllerCollection constructor.
+     * 
+     * @param Route $defaultRoute
+     * @param RouteCollection $routesFactory
+     * @param RoutingFactoriesAdapter $routingFactories
+     */
+    final public function __construct(
+        Route $defaultRoute,
+        RouteCollection $routesFactory,
+        RoutingFactoriesAdapter $routingFactories
+    ) {
         $this->defaultRoute = $defaultRoute;
         $this->routesFactory = $routesFactory;
-        $this->controllersFactory = $controllersFactory;
+        $this->routingFactories = $routingFactories;
 
         $this->defaultController = function(Request $request) {
             throw new NoBoundControllerException(
@@ -50,13 +95,13 @@ class ControllerCollection
      * @param string $prefix
      * @param ControllerCollection|callable $controllers
      */
-    public function mount(string $prefix, $controllers)
+    final public function mount(string $prefix, $controllers)
     {
         if ( is_callable($controllers) ) {
-            $collection = is_callable($this->controllersFactory)
-                ? call_user_func($this->controllersFactory)
-                : new static(new Route, new RouteCollection())
-            ;
+            $collection = $this->routingFactories->createControllerCollection(
+                $this->routingFactories->createRoute(),
+                $this->routingFactories->createRouteCollection()
+            );
 
             $controllers($collection);
         }
@@ -78,11 +123,11 @@ class ControllerCollection
      * @param callable|null $to
      * @return RouteEntity
      */
-    public function match(string $pattern, callable $to = null): RouteEntity
+    final public function match(string $pattern, callable $to = null): RouteEntity
     {
         $route = clone $this->defaultRoute;
         $route->setPath($pattern);
-        $this->controllers[] = $controller = new RouteEntity($route);
+        $this->controllers[] = $controller = $this->routingFactories->createRouteEntity($route);
         $route->setDefault('_controller', $to ?? $this->defaultController);
 
         return $controller;
@@ -95,7 +140,7 @@ class ControllerCollection
      * @param callable|null $to
      * @return RouteEntity
      */
-    public function get(string $pattern, callable $to = null): RouteEntity
+    final public function get(string $pattern, callable $to = null): RouteEntity
     {
         return $this->match($pattern, $to)->method('GET');
     }
@@ -107,7 +152,7 @@ class ControllerCollection
      * @param callable|null $to
      * @return RouteEntity
      */
-    public function post(string $pattern, callable $to = null): RouteEntity
+    final public function post(string $pattern, callable $to = null): RouteEntity
     {
         return $this->match($pattern, $to)->method('POST');
     }
@@ -119,7 +164,7 @@ class ControllerCollection
      * @param callable|null $to
      * @return RouteEntity
      */
-    public function put(string $pattern, callable $to = null): RouteEntity
+    final public function put(string $pattern, callable $to = null): RouteEntity
     {
         return $this->match($pattern, $to)->method('PUT');
     }
@@ -131,7 +176,7 @@ class ControllerCollection
      * @param callable|null $to
      * @return RouteEntity
      */
-    public function delete(string $pattern, callable $to = null): RouteEntity
+    final public function delete(string $pattern, callable $to = null): RouteEntity
     {
         return $this->match($pattern, $to)->method('DELETE');
     }
@@ -143,7 +188,7 @@ class ControllerCollection
      * @param callable|null $to
      * @return RouteEntity
      */
-    public function options(string $pattern, callable $to = null): RouteEntity
+    final public function options(string $pattern, callable $to = null): RouteEntity
     {
         return $this->match($pattern, $to)->method('OPTIONS');
     }
@@ -155,177 +200,84 @@ class ControllerCollection
      * @param callable|null $to
      * @return RouteEntity
      */
-    public function patch(string $pattern, callable $to = null): RouteEntity
+    final public function patch(string $pattern, callable $to = null): RouteEntity
     {
         return $this->match($pattern, $to)->method('PATCH');
     }
 
     /**
-     * Sets the requirement for a route variable for all current and future routes.
+     * Persists and freezes staged controllers.
      *
-     * @param string $variable
-     * @param string $regexp
-     * @return ControllerCollection
+     * @return RouteCollection
      */
-    public function assert(string $variable, string $regexp): ControllerCollection
+    final public function flush(): RouteCollection
     {
-        $this->defaultRoute->assert($variable, $regexp);
-
-        foreach ( $this->controllers as $controller ) {
-            $controller->assert($variable, $regexp);
-        }
-
-        return $this;
+        return $this->doFlush('', $this->routesFactory);
     }
 
     /**
-     * Sets the default value for a route variable for all current and future routes.
+     * recursion aware flash execution.
      *
-     * @param string $variable
-     * @param $default
-     * @return ControllerCollection
+     * @param string $prefix
+     * @param RouteCollection $routes
+     * @return RouteCollection
      */
-    public function value(string $variable, $default): ControllerCollection
+    private function doFlush(string $prefix, RouteCollection $routes): RouteCollection
     {
-        $this->defaultRoute->value($variable, $default);
-
-        foreach ( $this->controllers as $controller ) {
-            $controller->value($variable, $default);
+        if ( ! empty($prefix) ) {
+            $prefix = '/'.trim(trim($prefix), '/');
         }
 
-        return $this;
+        foreach ( $this->controllers as $controller ) {
+            if ( $controller instanceof Controller ) {
+                $controller->getRoute()->setPath($prefix.$controller->getRoute()->getPath());
+
+                if ( ! $name = $controller->getRouteName() ) {
+                    $name = $base = $controller->generateRouteName('');
+                    $i = 0;
+                    while ( $routes->get($name) ) {
+                        $name = $base.'_'.++$i;
+                    }
+
+                    $controller->bind($name);
+                }
+
+                $routes->add($name, $controller->getRoute());
+                $controller->freeze();
+            }
+            elseif ( $controller instanceof self ) {
+                $controller->doFlush($prefix.$controller->prefix, $routes);
+            }
+        }
+
+        $this->controllers = [];
+
+        return $routes;
     }
 
     /**
-     * Sets a converter for a route variable for all current and future routes.
-     *
-     * @param string $variable
-     * @param callable $callback
-     * @return ControllerCollection
-     */
-    public function convert(string $variable, callable $callback): ControllerCollection
-    {
-        $this->defaultRoute->convert($variable, $callback);
-
-        foreach ( $this->controllers as $controller ) {
-            $controller->convert($variable, $callback);
-        }
-
-        return $this;
-    }
-
-    /**
-     * Sets the requirement for the HTTP method for all current and future routes.
+     * Magic caller for route methods applied to the default route and all current routes.
      *
      * @param string $method
+     * @param array $arguments
      * @return ControllerCollection
      */
-    public function method(string $method): ControllerCollection
+    final public function __call(string $method, array $arguments = []): ControllerCollection
     {
-        $this->defaultRoute->method($method);
-
-        foreach ( $this->controllers as $controller ) {
-            $controller->method($method);
+        if ( ! method_exists($this->defaultRoute, $method) ) {
+            throw new \BadMethodCallException(
+                sprintf(
+                    'Method "%s::%s" does not exists',
+                    get_class($this->defaultRoute),
+                    $method
+                )
+            );
         }
 
-        return $this;
-    }
-
-    /**
-     * Sets the requirement of hosts for all current and future routes.
-     *
-     * @param string $host
-     * @return ControllerCollection
-     */
-    public function host(string $host): ControllerCollection
-    {
-        $this->defaultRoute->host($host);
+        call_user_func_array([$this->defaultRoute, $method], $arguments);
 
         foreach ( $this->controllers as $controller ) {
-            $controller->host($host);
-        }
-
-        return $this;
-    }
-
-    /**
-     * Sets the requirement for HTTP (no HTTPS) for all current and future routes.
-     *
-     * @return ControllerCollection
-     */
-    public function requireHttp(): ControllerCollection
-    {
-        $this->defaultRoute->requireHttp();
-
-        foreach ( $this->controllers as $controller ) {
-            $controller->requireHttp();
-        }
-
-        return $this;
-    }
-
-    /**
-     * Sets the requirement for HTTPS for all current and future routes.
-     *
-     * @return ControllerCollection
-     */
-    public function requireHttps(): ControllerCollection
-    {
-        $this->defaultRoute->requireHttps();
-
-        foreach ( $this->controllers as $controller ) {
-            $controller->requireHttps();
-        }
-
-        return $this;
-    }
-
-    /**
-     * Sets a callback to handle before triggering the route callback for all current and future routes.
-     *
-     * @param callable $callback
-     * @return ControllerCollection
-     */
-    public function before(callable $callback): ControllerCollection
-    {
-        $this->defaultRoute->before($callback);
-
-        foreach ( $this->controllers as $controller ) {
-            $controller->before($callback);
-        }
-
-        return $this;
-    }
-
-    /**
-     * Sets a callback to handle after the route callback for all current and future routes.
-     *
-     * @param callable $callback
-     * @return ControllerCollection
-     */
-    public function after(callable $callback): ControllerCollection
-    {
-        $this->defaultRoute->after($callback);
-
-        foreach ( $this->controllers as $controller ) {
-            $controller->after($callback);
-        }
-
-        return $this;
-    }
-
-    /**
-     * Sets a condition for the route to match for all current and future routes.
-     *
-     * @param string $condition
-     * @return ControllerCollection
-     */
-    public function when(string $condition): ControllerCollection
-    {
-        $this->defaultRoute->when($condition);
-
-        foreach ( $this->controllers as $controller ) {
-            $controller->when($condition);
+            call_user_func_array([$controller, $method], $arguments);
         }
 
         return $this;
