@@ -1,0 +1,17 @@
+{
+  "name": "descent/framework",
+  "type": "library",
+  "require": {
+    "php": ">=7.0",
+    "filp/woops": "~2.1",
+    "symfony/event-dispatcher": "~3.2",
+    "symfony/http-foundation": "~3.2",
+    "symfony/http-kernel": "~3.2",
+    "symfony/routing": "~3.2"
+  },
+  "autoload": {
+    "psr-4": {
+      "Descent\\": "."
+    }
+  }
+}
