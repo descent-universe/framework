@@ -82,8 +82,16 @@ class Container implements ServiceContainerInterface
      */
     public function bind(string $interface, $concrete = null): ServiceInterface
     {
+        $object = is_object($concrete) ? $concrete : null;
+        $concrete = is_object($concrete) ? get_class($concrete) : $concrete;
+
         $this->interfaces[$key = $this->marshalKey($interface)] = new Service($interface, $concrete);
-        unset($this->interfaces[$key]);
+        unset($this->instances[$key]);
+
+        if ( $object ) {
+            $this->instances[$key] = $object;
+            $this->interfaces[$key]->singleton();
+        }
 
         return $this->interfaces[$key];
     }
